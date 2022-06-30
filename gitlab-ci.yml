@@ -1,0 +1,148 @@
+image: registry.gitlab.com/gitlab-org/terraform-images/stable:latest
+variables:
+  TF_ROOT: ${CI_PROJECT_DIR}
+  TF_ADDRESS: ${CI_API_V4_URL}/projects/${CI_PROJECT_ID}/terraform/state/${TF_VAR_ENVIRONMENT}
+  TF_CLI_CONFIG_FILE: $CI_PROJECT_DIR/.terraformrc
+
+cache:
+  key: production
+  paths:
+    - ${TF_ROOT}/.terraform
+
+before_script:
+  - cd ${TF_ROOT}
+  - echo -e "credentials \"$CI_SERVER_HOST\" {\n  token = \"$CI_JOB_TOKEN\"\n}" > $TF_CLI_CONFIG_FILE
+
+stages:
+  - infra-prepare
+  - infra-build
+  - infra-deploy
+  - infra-destroy
+
+init:
+  stage: infra-prepare
+  script:
+    - gitlab-terraform init
+
+plan_develop:
+  stage: infra-build
+  script:
+    - cat "$TFVARIABLES" > "terraform.tfvars"
+    - echo -e "\nIMAGE_TAG = $IMAGE_TAG\n" >> terraform.tfvars
+    - gitlab-terraform plan
+    - gitlab-terraform plan-json
+  artifacts:
+    name: plan_develop
+    paths:
+      - ${TF_ROOT}/plan.cache
+    reports:
+      terraform: ${TF_ROOT}/plan.json
+  only:
+    - develop
+  environment: develop
+
+plan_qa:
+  stage: infra-build
+  script:
+    - cat "$TFVARIABLES" > "terraform.tfvars"
+    - echo -e "\nIMAGE_TAG = $IMAGE_TAG\n" >> terraform.tfvars
+    - gitlab-terraform plan
+    - gitlab-terraform plan-json
+  artifacts:
+    name: plan_qa
+    paths:
+      - ${TF_ROOT}/plan.cache
+    reports:
+      terraform: ${TF_ROOT}/plan.json
+  only:
+    - qa
+  environment: qa
+
+plan_prod:
+  stage: infra-build
+  script:
+    - cat "$TFVARIABLES" > "terraform.tfvars"
+    - echo -e "\nIMAGE_TAG = $IMAGE_TAG\n" >> terraform.tfvars
+    - gitlab-terraform plan
+    - gitlab-terraform plan-json
+  artifacts:
+    name: plan_prod
+    paths:
+      - ${TF_ROOT}/plan.cache
+    reports:
+      terraform: ${TF_ROOT}/plan.json
+  only:
+    - prod
+  environment: prod
+
+apply_develop:
+  stage: infra-deploy
+  environment: develop
+  script:
+    - cat "$TFVARIABLES" > "terraform.tfvars"
+    - echo -e "\nIMAGE_TAG = $IMAGE_TAG\n" >> terraform.tfvars
+    - gitlab-terraform apply
+  dependencies:
+    - plan_develop
+  only:
+    - develop
+
+apply_qa:
+  stage: infra-deploy
+  environment: qa
+  script:
+    - cat "$TFVARIABLES" > "terraform.tfvars"
+    - echo -e "\nIMAGE_TAG = $IMAGE_TAG\n" >> terraform.tfvars
+    - gitlab-terraform apply
+  dependencies:
+    - plan_qa
+  only:
+    - qa
+
+apply_prod:
+  stage: infra-deploy
+  environment: prod
+  script:
+    - cat "$TFVARIABLES" > "terraform.tfvars"
+    - echo -e "\nIMAGE_TAG = $IMAGE_TAG\n" >> terraform.tfvars
+    - gitlab-terraform apply
+  dependencies:
+    - plan_prod
+  only:
+    - prod
+
+destroy_develop:
+  stage: infra-destroy
+  environment: develop
+  script:
+    - cat "$TFVARIABLES" > "terraform.tfvars"
+    - gitlab-terraform destroy
+  dependencies:
+    - apply_develop
+  when: manual
+  only:
+    - develop
+
+destroy_qa:
+  stage: infra-destroy
+  environment: qa
+  script:
+    - cat "$TFVARIABLES" > "terraform.tfvars"
+    - gitlab-terraform destroy
+  dependencies:
+    - apply_qa
+  when: manual
+  only:
+    - qa
+
+destroy_prod:
+  stage: infra-destroy
+  environment: prod
+  script:
+    - cat "$TFVARIABLES" > "terraform.tfvars"
+    - gitlab-terraform destroy
+  dependencies:
+    - apply_prod
+  when: manual
+  only:
+    - prod
